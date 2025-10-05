@@ -3,8 +3,9 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>AR Drone (Individual Rotor Fix)</title>
+  <title>AR Drone (Stable Distance + Rotor Fix + Delay Spawn)</title>
 
+  <!-- A-Frame & AR.js -->
   <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
   <script src="https://cdn.rawgit.com/jeromeetienne/AR.js/1.7.7/aframe/build/aframe-ar.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.9.0/nipplejs.min.js"></script>
@@ -62,7 +63,7 @@
     let rotors = [], currentRPM = 0;
     function rpmToRadPerSec(rpm){ return rpm * Math.PI * 2 / 60; }
 
-    // ✅ 正確に4枚のプロペラを取得
+    // ✅ プロペラを正確に4つだけ取得
     function collectRotors(root) {
       rotors = [];
       const names = [
@@ -75,7 +76,7 @@
         const node = root.getObjectByName(name);
         if (node) rotors.push({ obj: node, axis: rotorConfig.axis.clone() });
       });
-      console.log(`🌀 プロペラ検出: ${rotors.length}枚`);
+      console.log(`🌀 検出されたプロペラ数: ${rotors.length}`);
     }
 
     function spawnDroneAtMarkerInitial() {
@@ -97,8 +98,8 @@
       const mPos = new THREE.Vector3(), mQuat = new THREE.Quaternion(), mScale = new THREE.Vector3();
       marker.object3D.matrixWorld.decompose(mPos, mQuat, mScale);
 
-      // 🎯 自然な距離に調整
-      const offsetLocal = new THREE.Vector3(0, 0, -0.1);
+      // 🎯 適正距離（少し上・少し奥）
+      const offsetLocal = new THREE.Vector3(0, 0, -0.3);
       offsetLocal.applyQuaternion(mQuat);
       pos.copy(mPos).add(offsetLocal);
 
@@ -111,7 +112,11 @@
       currentRPM = rotorConfig.rpmIdle * 0.2;
     }
 
-    marker.addEventListener('markerFound', spawnDroneAtMarkerInitial);
+    // ✅ 初回のmarkerFoundは0.4秒遅らせて安定距離でスポーン
+    marker.addEventListener('markerFound', () => {
+      console.log("📸 markerFound detected — delaying spawn for stable pose...");
+      setTimeout(spawnDroneAtMarkerInitial, 400);
+    });
 
     // ジョイスティック
     const input = { left: {x:0,y:0}, right:{x:0,y:0} };
