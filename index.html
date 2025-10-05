@@ -97,7 +97,7 @@
       marker.object3D.matrixWorld.decompose(mPos, mQuat, mScale);
 
       // 📏 さらに遠く・高くに配置
-      const offsetLocal = new THREE.Vector3(0, 0.7, -0.8);
+      const offsetLocal = new THREE.Vector3(0, 0.2, -0.4);
       offsetLocal.applyQuaternion(mQuat);
       pos.copy(mPos).add(offsetLocal);
 
