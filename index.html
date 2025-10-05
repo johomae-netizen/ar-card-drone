@@ -3,10 +3,11 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>AR Drone - Single Instance (Fixed)</title>
+  <title>AR Drone - Stable Version</title>
 
+  <!-- A-Frame / AR.js -->
   <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
-  <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+  <script src="https://cdn.rawgit.com/jeromeetienne/AR.js/1.7.7/aframe/build/aframe-ar.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.9.0/nipplejs.min.js"></script>
 
   <style>
@@ -18,7 +19,6 @@
     #leftStick, #rightStick {
       position: fixed; bottom: 20px; width: 150px; height: 150px; z-index: 10;
       touch-action: none; user-select: none;
-      -webkit-user-select: none; -webkit-touch-callout: none; -webkit-user-drag: none;
     }
     #leftStick { left: 20px; }
     #rightStick { right: 20px; }
@@ -26,82 +26,27 @@
       position: fixed; left: 8px; right: 8px; top: 8px; z-index: 9;
       background: rgba(0,0,0,.55); color:#fff; padding:8px 10px; border-radius:10px;
       font: 13px/1.4 -apple-system, "Segoe UI", Roboto, Helvetica, Arial;
-      user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+      user-select: none;
     }
   </style>
 </head>
 
 <body>
-  <div id="hint">左=上昇/回転｜右=前後左右｜常に1台だけ表示（再検出で置き換え）</div>
+  <div id="hint">左＝上昇/下降＋回転｜右＝前後左右移動｜1体だけ生成＆プロペラ回転🚁</div>
   <div id="leftStick"></div>
   <div id="rightStick"></div>
 
   <a-scene embedded arjs="trackingMethod: best; debugUIEnabled: false;">
-    <!-- ★ マーカーの中は空にする（固定モデルを置かない） -->
     <a-marker preset="hiro" id="marker"></a-marker>
-
-    <!-- JSでここに機体をぶら下げる -->
     <a-entity id="worldRoot"></a-entity>
-
     <a-entity camera></a-entity>
   </a-scene>
 
-  <!-- in-appブラウザ検知（Safariで開いてね案内） -->
-  <div id="inapp-block" style="display:none; position:fixed; inset:0; background:#fff; z-index:99999; padding:20px; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
-    <div style="max-width:560px; margin:40px auto;">
-      <h2 style="margin:0 0 12px;">この画面ではARが動きません</h2>
-      <p style="margin:0 0 16px; line-height:1.6;">
-        アプリ内ブラウザはカメラが使えないため、<b>Safari（iPhone）/Chrome（Android）</b>で開いてください。
-      </p>
-      <div style="border:1px solid #ddd; border-radius:10px; padding:12px; margin-bottom:12px;">
-        <div style="font-size:12px; color:#555; margin-bottom:6px;">URL</div>
-        <div id="the-url" style="word-break:break-all;">https://johomae-netizen.github.io/ar-card-drone/</div>
-        <button id="copy-url" style="margin-top:10px; padding:10px 14px; border:1px solid #ccc; border-radius:8px; background:#f7f7f7;">URLをコピー</button>
-      </div>
-      <div style="font-size:14px; color:#444; line-height:1.7;">
-        <b>iPhone（LINE/Instagram等）</b><br>
-        右上の「…」 → <b>Safariで開く</b> を選択してください。<br><br>
-        <b>一番確実</b>：ホーム画面の<b>カメラ</b>アプリでQRを読み取り → <b>Safariで開く</b>
-      </div>
-    </div>
-  </div>
-
   <script>
-    // ===== in-app browser 検知 =====
-    (function(){
-      const ua = navigator.userAgent || navigator.vendor || window.opera;
-      const isLine = /Line/i.test(ua);
-      const isFBApp = /FBAN|FBAV|FB_IAB|FB4A|FBAN\/FBIOS/i.test(ua);
-      const isIG = /Instagram/i.test(ua);
-      const isTwitter = /Twitter/i.test(ua);
-      const isTikTok = /TikTok/i.test(ua);
-      const isAndroidWV = /Android.*Version\/[\d.]+.*Chrome\/[\d.]+.*(wv|; wv)/i.test(ua);
-      const inApp = isLine || isFBApp || isIG || isTwitter || isTikTok || isAndroidWV;
-      if (inApp) {
-        const block = document.getElementById('inapp-block');
-        if (block) block.style.display = 'block';
-        const btn = document.getElementById('copy-url');
-        btn?.addEventListener('click', async () => {
-          const url = location.origin + location.pathname;
-          try { await navigator.clipboard.writeText(url); btn.textContent = 'コピーしました'; }
-          catch(e){ const t=document.createElement('textarea'); t.value=url; document.body.appendChild(t); t.select(); document.execCommand('copy'); document.body.removeChild(t); btn.textContent='コピーしました'; }
-          setTimeout(()=> btn.textContent = 'URLをコピー', 2500);
-        });
-      }
-    })();
-
-    // ===== iPhone長押しドラッグ封じ =====
-    const stopTouch = e => { e.preventDefault(); e.stopPropagation(); return false; };
-    document.addEventListener('touchstart', stopTouch, { passive:false });
-    document.addEventListener('touchmove',  stopTouch, { passive:false });
-
     const worldRoot = document.getElementById('worldRoot');
     const marker = document.getElementById('marker');
 
     let drone = null, rotors = [];
-    let spawning = false, lastSpawn = 0;
-
-    // 操縦・姿勢
     const pos = new THREE.Vector3(0, 0, 0);
     const yawEuler = new THREE.Euler(0, THREE.MathUtils.degToRad(180), 0, 'XYZ');
     let currentTilt = { pitch: 0, roll: 0 };
@@ -112,6 +57,7 @@
     let takeoff = { active: false, start: 0, dur: 1200, lift: 0.25 };
     let hover = { phase: 0, amp: 0.02, speed: 2.3 };
 
+    // --- プロペラ設定 ---
     const rotorConfig = { rpmIdle: 900, rpmMax: 2200, axis: new THREE.Vector3(0, 1, 0) };
     let currentRPM = 0;
     function rpmToRadPerSec(rpm){ return rpm * Math.PI * 2 / 60; }
@@ -123,34 +69,30 @@
     ];
     function collectRotors(root){
       rotors = [];
-      rotorNames.forEach(n=>{ const node = root.getObjectByName(n); if (node) rotors.push({ obj: node, axis: rotorConfig.axis.clone() }); });
+      rotorNames.forEach(n=>{
+        const node = root.getObjectByName(n);
+        if (node) rotors.push({ obj: node, axis: rotorConfig.axis.clone() });
+      });
     }
 
-    function removeDrone(){
-      if (drone && drone.parentNode) worldRoot.removeChild(drone);
-      drone = null; rotors = [];
-    }
-
+    // --- ドローン生成 ---
     function spawnDrone(){
-      if (spawning) return;
-      const now = performance.now();
-      if (now - lastSpawn < 400) return; // デバウンス
-      spawning = true; lastSpawn = now;
-
-      removeDrone();
-
+      if (drone && drone.parentNode){
+        worldRoot.removeChild(drone);
+        drone = null;
+      }
       drone = document.createElement('a-entity');
-      // ★ モデルは同じ階層のファイル名を使用（必要なら絶対URLに）
       drone.setAttribute('gltf-model', 'drone.glb');
       drone.setAttribute('scale', '2.0 2.0 2.0');
       drone.setAttribute('rotation', '0 180 0');
-      drone.addEventListener('model-loaded', ()=>{
+
+      drone.addEventListener('model-loaded', () => {
         const root = drone.getObject3D('mesh') || drone.object3D;
         if (root) collectRotors(root);
       });
       worldRoot.appendChild(drone);
 
-      // 初期位置（scale=2.0想定：少し上＆やや遠く）
+      // 少し上・少し奥
       const mPos = new THREE.Vector3(), mQuat = new THREE.Quaternion(), mScale = new THREE.Vector3();
       marker.object3D.matrixWorld.decompose(mPos, mQuat, mScale);
       const offsetLocal = new THREE.Vector3(0, 0.12, -0.60);
@@ -159,34 +101,34 @@
 
       yawEuler.set(0, THREE.MathUtils.degToRad(180), 0);
       currentTilt = { pitch: 0, roll: 0 };
+
       drone.object3D.position.copy(pos);
       drone.object3D.rotation.set(currentTilt.pitch, yawEuler.y, currentTilt.roll);
 
       takeoff = { active: true, start: performance.now(), dur: 1200, lift: 0.25 };
       currentRPM = rotorConfig.rpmIdle * 0.2;
-
-      spawning = false;
     }
 
-    // マーカー再検出で必ず「1台だけ」に置き換え
-    marker.addEventListener('markerFound', ()=> setTimeout(spawnDrone, 250));
+    marker.addEventListener('markerFound', () => {
+      spawnDrone();
+    });
 
-    // ジョイスティック
+    // --- ジョイスティック ---
     const input = { left:{x:0,y:0}, right:{x:0,y:0} };
-    const left = nipplejs.create({ zone: document.getElementById('leftStick'),  mode:'static', position:{left:'75px',bottom:'75px'} });
-    const right= nipplejs.create({ zone: document.getElementById('rightStick'), mode:'static', position:{right:'75px',bottom:'75px'} });
-    left.on('move',(_,d)=>{ const v=d.vector||{x:0,y:0}; input.left.x=v.x; input.left.y=v.y; });
-    left.on('end',()=>{ input.left.x=0; input.left.y=0; });
-    right.on('move',(_,d)=>{ const v=d.vector||{x:0,y:0}; input.right.x=v.x; input.right.y=v.y; });
-    right.on('end',()=>{ input.right.x=0; input.right.y=0; });
+    const left = nipplejs.create({ zone: document.getElementById('leftStick'), mode:'static', position:{left:'75px',bottom:'75px'}, color:'white' });
+    const right = nipplejs.create({ zone: document.getElementById('rightStick'), mode:'static', position:{right:'75px',bottom:'75px'}, color:'white' });
+    left.on('move',(_,d)=>{const v=d.vector||{x:0,y:0}; input.left.x=v.x; input.left.y=v.y;});
+    left.on('end',()=>{input.left.x=0; input.left.y=0;});
+    right.on('move',(_,d)=>{const v=d.vector||{x:0,y:0}; input.right.x=v.x; input.right.y=v.y;});
+    right.on('end',()=>{input.right.x=0; input.right.y=0;});
 
+    // --- アニメーションループ ---
     function tick(){
       requestAnimationFrame(tick);
       if (!drone) return;
+      const now = performance.now();
 
-      const now = performance.now(), dt = 0.016;
       let offsetY = 0;
-
       if (takeoff.active){
         const t = Math.min(1, (now - takeoff.start) / takeoff.dur);
         const e = 1 - Math.pow(1 - t, 3);
@@ -194,29 +136,31 @@
         if (t >= 1) takeoff.active = false;
         currentRPM += (rotorConfig.rpmIdle - currentRPM) * 0.06;
       } else {
-        hover.phase += hover.speed * dt;
+        hover.phase += hover.speed * 0.016;
         offsetY = Math.sin(hover.phase) * hover.amp;
         const thrust = Math.max(0, input.left.y) + Math.abs(input.right.y) + Math.abs(input.right.x);
-        const target = rotorConfig.rpmIdle + (rotorConfig.rpmMax - rotorConfig.rpmIdle) * Math.min(1, thrust * 0.6);
-        currentRPM += (target - currentRPM) * 0.08;
+        const targetRPM = rotorConfig.rpmIdle + (rotorConfig.rpmMax - rotorConfig.rpmIdle) * Math.min(1, thrust * 0.6);
+        currentRPM += (targetRPM - currentRPM) * 0.08;
       }
 
-      // 操縦
-      pos.y += input.left.y * 0.015;
-      yawEuler.y += THREE.MathUtils.degToRad(-input.left.x * 1.2);
-      pos.z += -input.right.y * 0.020;
-      pos.x +=  input.right.x * 0.008;
+      pos.y += input.left.y * SPEED_Y;
+      yawEuler.y += THREE.MathUtils.degToRad(-input.left.x * SPEED_YAW);
+      pos.z += -input.right.y * SPEED_FWD;
+      pos.x +=  input.right.x * SPEED_STRAFE;
 
-      // チルト
-      const TP = THREE.MathUtils.degToRad(10 * input.right.y);
-      const TR = THREE.MathUtils.degToRad(-10 * input.right.x);
-      currentTilt.pitch = THREE.MathUtils.lerp(currentTilt.pitch, TP, 0.12);
-      currentTilt.roll  = THREE.MathUtils.lerp(currentTilt.roll, TR, 0.12);
+      const tPitch = THREE.MathUtils.degToRad(TILT_MAX * input.right.y);
+      const tRoll  = THREE.MathUtils.degToRad(-TILT_MAX * input.right.x);
+      currentTilt.pitch = THREE.MathUtils.lerp(currentTilt.pitch, tPitch, TILT_SMOOTH);
+      currentTilt.roll  = THREE.MathUtils.lerp(currentTilt.roll,  tRoll,  TILT_SMOOTH);
 
       drone.object3D.position.set(pos.x, pos.y + offsetY, pos.z);
       drone.object3D.rotation.set(currentTilt.pitch, yawEuler.y, currentTilt.roll);
 
-      // （必要ならローター回転の処理をここに）
+      // プロペラ回転
+      if (rotors.length > 0 && currentRPM > 1){
+        const dAngle = rpmToRadPerSec(currentRPM) * 0.016;
+        for (const r of rotors) r.obj.rotateOnAxis(r.axis, dAngle);
+      }
     }
     requestAnimationFrame(tick);
   </script>
