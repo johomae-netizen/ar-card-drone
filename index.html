@@ -3,46 +3,30 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>AR Drone Controller (Distance Fixed + Touch Optimized)</title>
+  <title>AR Drone (Stable Spawn + Distance 2m)</title>
 
   <!-- A-Frame & AR.js -->
   <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
   <script src="https://cdn.rawgit.com/jeromeetienne/AR.js/1.7.7/aframe/build/aframe-ar.js"></script>
-  <!-- ジョイスティック -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.9.0/nipplejs.min.js"></script>
 
   <style>
     body {
-      margin: 0;
-      overflow: hidden;
-      -webkit-user-select: none;
-      user-select: none;
-      -webkit-touch-callout: none;
+      margin: 0; overflow: hidden;
+      user-select: none; -webkit-user-select: none;
+      touch-action: none; -webkit-touch-callout: none;
       -webkit-tap-highlight-color: transparent;
-      touch-action: none; /* ←ドラッグ選択防止 */
     }
     #leftStick, #rightStick {
-      position: fixed;
-      bottom: 20px;
-      width: 150px;
-      height: 150px;
-      z-index: 10;
+      position: fixed; bottom: 20px; width: 150px; height: 150px; z-index: 10;
     }
     #leftStick { left: 20px; }
     #rightStick { right: 20px; }
     #hint {
-      position: fixed;
-      left: 8px;
-      right: 8px;
-      top: 8px;
-      z-index: 9;
-      background: rgba(0,0,0,.55);
-      color: #fff;
-      padding: 8px 10px;
-      border-radius: 10px;
+      position: fixed; left: 8px; right: 8px; top: 8px; z-index: 9;
+      background: rgba(0,0,0,.55); color: #fff; padding: 8px 10px; border-radius: 10px;
       font: 13px/1.4 -apple-system, "Segoe UI", Roboto, Helvetica, Arial;
       text-align: center;
-      user-select: none;
     }
   </style>
 </head>
@@ -63,7 +47,7 @@
     const marker = document.getElementById('marker');
     let drone = null;
 
-    const pos = new THREE.Vector3(0,0,0);
+    const pos = new THREE.Vector3();
     const yawEuler = new THREE.Euler(0, THREE.MathUtils.degToRad(180), 0, 'XYZ');
     let currentTilt = { pitch: 0, roll: 0 };
 
@@ -94,13 +78,15 @@
     }
 
     function spawnDroneAtMarkerInitial() {
-      if (drone && drone.parentNode) drone.parentNode.removeChild(drone);
+      console.log("📡 markerFound → drone spawn開始");
 
+      if (drone && drone.parentNode) drone.parentNode.removeChild(drone);
       drone = document.createElement('a-entity');
-      drone.setAttribute('gltf-model', 'drone.glb');
+      drone.setAttribute('gltf-model', 'https://johomae-netizen.github.io/ar-card-drone/drone.glb');
       drone.setAttribute('scale', '0.6 0.6 0.6');
 
       drone.addEventListener('model-loaded', () => {
+        console.log("✅ drone.glb 読み込み完了");
         const root = drone.getObject3D('mesh') || drone.object3D;
         if (root) collectRotors(root);
       });
@@ -110,8 +96,8 @@
       const mPos = new THREE.Vector3(), mQuat = new THREE.Quaternion(), mScale = new THREE.Vector3();
       marker.object3D.matrixWorld.decompose(mPos, mQuat, mScale);
 
-      // ★距離をさらに離す（上へ1.2m・奥へ1.2m）
-      const offsetLocal = new THREE.Vector3(0, 1.2, -1.2);
+      // 📏 さらに遠く・高くに配置
+      const offsetLocal = new THREE.Vector3(0, 2.0, -2.0);
       offsetLocal.applyQuaternion(mQuat);
       pos.copy(mPos).add(offsetLocal);
 
@@ -119,14 +105,14 @@
       drone.object3D.position.copy(pos);
       drone.object3D.rotation.set(0, yawEuler.y, 0);
 
-      takeoff.active = true; 
+      takeoff.active = true;
       takeoff.start = performance.now();
       currentRPM = rotorConfig.rpmIdle * 0.2;
     }
 
     marker.addEventListener('markerFound', spawnDroneAtMarkerInitial);
 
-    // ジョイスティック設定
+    // ジョイスティック
     const input = { left: {x:0,y:0}, right:{x:0,y:0} };
     const left = nipplejs.create({ zone: document.getElementById('leftStick'), mode:'static', position:{left:'75px',bottom:'75px'}, color:'white' });
     const right= nipplejs.create({ zone: document.getElementById('rightStick'), mode:'static', position:{right:'75px',bottom:'75px'}, color:'white' });
@@ -162,12 +148,6 @@
 
         drone.object3D.position.set(pos.x, pos.y + offsetY, pos.z);
         drone.object3D.rotation.set(currentTilt.pitch, yawEuler.y, currentTilt.roll);
-
-        if(rotors.length>0){
-          currentRPM = rotorConfig.rpmIdle + 600 * (Math.abs(input.left.y)+Math.abs(input.right.x)+Math.abs(input.right.y));
-          const dAngle=rpmToRadPerSec(currentRPM)*dt;
-          for(const r of rotors){ r.obj.rotateOnAxis(r.axis, dAngle); }
-        }
       }
       requestAnimationFrame(tick);
     }
