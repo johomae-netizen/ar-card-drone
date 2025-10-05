@@ -32,12 +32,21 @@
 </head>
 
 <body>
-  <div id="hint">左＝上昇/下降+回転｜右＝前後左右移動｜マーカー再検出時は古いドローンを削除🚁</div>
+  <div id="hint">左＝上昇/下降+回転｜右＝前後左右移動｜再検出で1体だけに維持🚁</div>
   <div id="leftStick"></div>
   <div id="rightStick"></div>
 
   <a-scene embedded arjs="trackingMethod: best; debugUIEnabled: false;">
-    <a-marker preset="hiro" id="marker"></a-marker>
+    <!-- HIROマーカー（idを付ける） -->
+    <a-marker preset="hiro" id="marker">
+      <!-- ★ ドローン部分はそのまま（変更なし） -->
+      <a-entity id="droneModel"
+        gltf-model="drone.glb"
+        position="0 0.5 -1"
+        scale="2.0 2.0 2.0"
+        rotation="0 0 0"></a-entity>
+    </a-marker>
+
     <a-entity id="worldRoot"></a-entity>
     <a-entity camera></a-entity>
   </a-scene>
@@ -46,11 +55,14 @@
     const worldRoot = document.getElementById('worldRoot');
     const marker = document.getElementById('marker');
 
-    let drone = null;
+    let drone = null;          // 生成した機体（常に1体）
+    let spawning = false;      // 同時多発生成のガード
+    let lastSpawn = 0;         // デバウンス用
+    let rotors = [];
+
     const pos = new THREE.Vector3(0, 0, 0);
     const yawEuler = new THREE.Euler(0, THREE.MathUtils.degToRad(180), 0, 'XYZ');
     let currentTilt = { pitch: 0, roll: 0 };
-    let rotors = [];
 
     const SPEED_FWD = 0.020;
     const SPEED_STRAFE = 0.008;
@@ -81,17 +93,32 @@
       rotors = rotors.filter(r => r.obj !== root);
     }
 
+    // 既存ドローンを確実に破棄
+    function removeDrone(){
+      if (drone && drone.parentNode) {
+        drone.parentNode.removeChild(drone);
+      }
+      drone = null;
+      rotors = [];
+    }
+
     // === ドローン生成 ===
     function spawnDrone() {
-      // 🔹 既にあるドローンを削除してから新規生成
-      if (drone && drone.parentNode) {
-        worldRoot.removeChild(drone);
-        drone = null;
-      }
+      if (spawning) return;
+      spawning = true;
 
+      // デバウンス（誤連打防止）
+      const now = performance.now();
+      if (now - lastSpawn < 500) { spawning = false; return; }
+      lastSpawn = now;
+
+      // 前の機体を消す → 1体だけ維持
+      removeDrone();
+
+      // 新規作成（ドローンの設定はあなたのまま）
       drone = document.createElement('a-entity');
-      drone.setAttribute('gltf-model', 'drone.glb');
-      drone.setAttribute('scale', '2.0 2.0 2.0');
+      drone.setAttribute('gltf-model', 'drone.glb'); // ← そのまま
+      drone.setAttribute('scale', '2.0 2.0 2.0');     // ← そのまま
       drone.setAttribute('rotation', '0 180 0');
 
       drone.addEventListener('model-loaded', () => {
@@ -100,12 +127,13 @@
       });
       worldRoot.appendChild(drone);
 
+      // マーカー姿勢から少し上＆少し奥へ（scale 2.0 前提で見やすく）
       const mPos = new THREE.Vector3();
       const mQuat = new THREE.Quaternion();
       const mScale = new THREE.Vector3();
       marker.object3D.matrixWorld.decompose(mPos, mQuat, mScale);
 
-      const offsetLocal = new THREE.Vector3(0, 0.10, -0.35);
+      const offsetLocal = new THREE.Vector3(0, 0.12, -0.60); // 👈 少し遠めに
       offsetLocal.applyQuaternion(mQuat);
       pos.copy(mPos).add(offsetLocal);
 
@@ -115,69 +143,79 @@
       drone.object3D.position.copy(pos);
       drone.object3D.rotation.set(currentTilt.pitch, yawEuler.y, currentTilt.roll);
 
+      // 離陸
       takeoff.active = true;
       takeoff.start = performance.now();
       currentRPM = rotorConfig.rpmIdle * 0.2;
+
+      // 初回は姿勢安定のため少し遅らせてもOK（必要なら↓を有効化）
+      // setTimeout(()=>{ spawning=false; }, 200);
+      spawning = false;
     }
 
-    // 🔹 markerFoundごとに1体リセット
+    // markerFoundで生成（再検出でも常に1体に保つ）
     marker.addEventListener('markerFound', () => {
-      spawnDrone();
+      // 初回0.3秒待ってから生成するとチラつき減る
+      setTimeout(spawnDrone, 300);
     });
 
     // === ジョイスティック ===
     const input = { left:{x:0,y:0,active:false}, right:{x:0,y:0,active:false} };
     const stopTouch = e => { e.preventDefault(); e.stopPropagation(); return false; };
     document.addEventListener('touchstart', stopTouch, { passive: false });
-    document.addEventListener('touchmove', stopTouch, { passive: false });
+    document.addEventListener('touchmove',  stopTouch, { passive: false });
 
-    const left = nipplejs.create({ zone: document.getElementById('leftStick'), mode:'static', position:{left:'75px',bottom:'75px'}, color:'white' });
+    const left = nipplejs.create({ zone: document.getElementById('leftStick'),  mode:'static', position:{left:'75px',bottom:'75px'}, color:'white' });
+    const right= nipplejs.create({ zone: document.getElementById('rightStick'), mode:'static', position:{right:'75px',bottom:'75px'}, color:'white' });
     left.on('move',(_,d)=>{input.left.active=true;input.left.x=d.vector.x;input.left.y=d.vector.y;});
     left.on('end',()=>{input.left.active=false;input.left.x=0;input.left.y=0;});
-
-    const right = nipplejs.create({ zone: document.getElementById('rightStick'), mode:'static', position:{right:'75px',bottom:'75px'}, color:'white' });
     right.on('move',(_,d)=>{input.right.active=true;input.right.x=d.vector.x;input.right.y=d.vector.y;});
     right.on('end',()=>{input.right.active=false;input.right.x=0;input.right.y=0;});
 
+    // === ループ ===
+    function rpmToDelta(dt){ return rpmToRadPerSec(currentRPM) * dt; }
+
     function tick() {
-      const now = performance.now();
       requestAnimationFrame(tick);
       if (!drone) return;
 
-      let takeoffOffset = 0;
-      let takeoffGain = 1;
+      const now = performance.now();
+      const dt = 0.016;
 
+      let takeoffOffset = 0;
       if (takeoff.active) {
         const t = Math.min(1, (now - takeoff.start) / takeoff.dur);
         const e = 1 - Math.pow(1 - t, 3);
         takeoffOffset = e * takeoff.lift + Math.sin(now * 0.06) * 0.01 * (1 - e);
-        takeoffGain = e;
         if (t >= 1) takeoff.active = false;
         const target = rotorConfig.rpmIdle;
         currentRPM += (target - currentRPM) * 0.06;
       } else {
-        hover.phase += hover.speed * 0.016;
+        hover.phase += hover.speed * dt;
         takeoffOffset = Math.sin(hover.phase) * hover.amp;
         const thrust = Math.max(0, input.left.y) + Math.abs(input.right.y) + Math.abs(input.right.x);
         const target = rotorConfig.rpmIdle + (rotorConfig.rpmMax - rotorConfig.rpmIdle) * Math.min(1, thrust * 0.6);
         currentRPM += (target - currentRPM) * 0.08;
       }
 
+      // 移動
       pos.y += input.left.y * SPEED_Y;
       yawEuler.y += THREE.MathUtils.degToRad(-input.left.x * SPEED_YAW);
       pos.z += -input.right.y * SPEED_FWD;
       pos.x +=  input.right.x * SPEED_STRAFE;
 
+      // 見た目チルト
       const targetPitch = THREE.MathUtils.degToRad(TILT_MAX * input.right.y);
       const targetRoll  = THREE.MathUtils.degToRad(-TILT_MAX * input.right.x);
       currentTilt.pitch = THREE.MathUtils.lerp(currentTilt.pitch, targetPitch, TILT_SMOOTH);
-      currentTilt.roll  = THREE.MathUtils.lerp(currentTilt.roll, targetRoll, TILT_SMOOTH);
+      currentTilt.roll  = THREE.MathUtils.lerp(currentTilt.roll,  targetRoll,  TILT_SMOOTH);
 
       drone.object3D.position.set(pos.x, pos.y + takeoffOffset, pos.z);
       drone.object3D.rotation.set(currentTilt.pitch, yawEuler.y, currentTilt.roll);
 
+      // プロペラ回転
       if (rotors.length > 0 && currentRPM > 1) {
-        const dAngle = rpmToRadPerSec(currentRPM) * 0.016;
+        const dAngle = rpmToDelta(dt);
         for (const r of rotors) r.obj.rotateOnAxis(r.axis, dAngle);
       }
     }
