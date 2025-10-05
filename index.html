@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>AR Drone (Stable Spawn + Distance 2m)</title>
+  <title>AR Drone (Propeller Fixed + Distance Tuned)</title>
 
   <!-- A-Frame & AR.js -->
   <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
@@ -63,18 +63,24 @@
     let rotors = [], currentRPM = 0;
     function rpmToRadPerSec(rpm){ return rpm * Math.PI * 2 / 60; }
 
-    const manualRotorNames = [
-      'mavic_air_dronemavic_air_drone_armsmavic_air_drone_arm_front_rgtmavic_air_drone_front_prop_rgt',
-      'mavic_air_dronemavic_air_drone_armsmavic_air_drone_arm_front_lftmavic_air_drone_front_prop_lft',
-      'mavic_air_dronemavic_air_drone_arm_rear_rgtmavic_air_drone_armsmavic_air_drone_rear_prop_rgt',
-      'mavic_air_dronemavic_air_drone_armsmavic_air_drone_arm_rear_lftmavic_air_drone_rear_prop_lft'
-    ];
-    function collectRotors(root){
+    // ✅ 改良版：プロペラ自動検出ロジック
+    function collectRotors(root) {
       rotors = [];
-      manualRotorNames.forEach(name=>{
-        const node = root.getObjectByName(name);
-        if (node) rotors.push({ obj: node, axis: rotorConfig.axis.clone() });
+
+      const manualRotorNames = [
+        'front_prop', 'rear_prop', 'propeller', 'rotor', 'mavic_air_drone_front_prop_rgt',
+        'mavic_air_drone_front_prop_lft', 'mavic_air_drone_rear_prop_rgt', 'mavic_air_drone_rear_prop_lft'
+      ];
+
+      root.traverse((child) => {
+        if (!child.name) return;
+        const lname = child.name.toLowerCase();
+        if (manualRotorNames.some(n => lname.includes(n))) {
+          rotors.push({ obj: child, axis: rotorConfig.axis.clone() });
+        }
       });
+
+      console.log(`🌀 検出されたプロペラ数: ${rotors.length}`);
     }
 
     function spawnDroneAtMarkerInitial() {
@@ -96,8 +102,8 @@
       const mPos = new THREE.Vector3(), mQuat = new THREE.Quaternion(), mScale = new THREE.Vector3();
       marker.object3D.matrixWorld.decompose(mPos, mQuat, mScale);
 
-      // 📏 さらに遠く・高くに配置
-      const offsetLocal = new THREE.Vector3(0, -0.2, 0.1);
+      // 🔧 高さを低くしてちょうど見える位置
+      const offsetLocal = new THREE.Vector3(0, 0.2, -0.4);
       offsetLocal.applyQuaternion(mQuat);
       pos.copy(mPos).add(offsetLocal);
 
@@ -148,6 +154,13 @@
 
         drone.object3D.position.set(pos.x, pos.y + offsetY, pos.z);
         drone.object3D.rotation.set(currentTilt.pitch, yawEuler.y, currentTilt.roll);
+
+        // ✅ プロペラ回転を常に更新
+        if(rotors.length>0){
+          currentRPM = rotorConfig.rpmIdle + 600 * (Math.abs(input.left.y)+Math.abs(input.right.x)+Math.abs(input.right.y));
+          const dAngle=rpmToRadPerSec(currentRPM)*dt;
+          for(const r of rotors){ r.obj.rotateOnAxis(r.axis, dAngle); }
+        }
       }
       requestAnimationFrame(tick);
     }
