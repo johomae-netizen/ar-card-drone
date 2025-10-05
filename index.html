@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>AR Drone Controller (Mode2 + Takeoff + Tuned)</title>
+  <title>AR Drone Controller (Distance Fixed + Touch Optimized)</title>
 
   <!-- A-Frame & AR.js -->
   <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
@@ -12,36 +12,53 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.9.0/nipplejs.min.js"></script>
 
   <style>
-    body { margin:0; overflow:hidden; }
+    body {
+      margin: 0;
+      overflow: hidden;
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-touch-callout: none;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: none; /* ←ドラッグ選択防止 */
+    }
     #leftStick, #rightStick {
-      position: fixed; bottom: 20px; width: 150px; height: 150px; z-index: 10;
+      position: fixed;
+      bottom: 20px;
+      width: 150px;
+      height: 150px;
+      z-index: 10;
     }
     #leftStick { left: 20px; }
     #rightStick { right: 20px; }
     #hint {
-      position: fixed; left: 8px; right: 8px; top: 8px; z-index: 9;
-      background: rgba(0,0,0,.55); color:#fff; padding:8px 10px; border-radius:10px;
+      position: fixed;
+      left: 8px;
+      right: 8px;
+      top: 8px;
+      z-index: 9;
+      background: rgba(0,0,0,.55);
+      color: #fff;
+      padding: 8px 10px;
+      border-radius: 10px;
       font: 13px/1.4 -apple-system, "Segoe UI", Roboto, Helvetica, Arial;
+      text-align: center;
+      user-select: none;
     }
   </style>
 </head>
 
 <body>
-  <div id="hint">Mode2操作: 左=上昇/回転、右=前後/左右｜マーカー再検出で初期化</div>
+  <div id="hint">左: 上昇/回転　右: 前後/左右｜マーカー再検出で初期化</div>
   <div id="leftStick"></div>
   <div id="rightStick"></div>
 
   <a-scene embedded arjs="trackingMethod: best; debugUIEnabled: false;">
-    <!-- マーカー -->
     <a-marker id="marker" preset="hiro"></a-marker>
-
-    <!-- ドローン生成位置 -->
     <a-entity id="worldRoot"></a-entity>
     <a-entity camera></a-entity>
   </a-scene>
 
   <script>
-    const scene = document.querySelector('a-scene');
     const worldRoot = document.getElementById('worldRoot');
     const marker = document.getElementById('marker');
     let drone = null;
@@ -50,14 +67,12 @@
     const yawEuler = new THREE.Euler(0, THREE.MathUtils.degToRad(180), 0, 'XYZ');
     let currentTilt = { pitch: 0, roll: 0 };
 
-    // 操縦パラメータ（調整後）
-    const SPEED_XZ   = 0.008;   // 横・前後スピード
-    const SPEED_Y    = 0.015;   // 上下スピード
-    const SPEED_YAW  = 1.2;     // 回転スピード
+    const SPEED_XZ   = 0.008;
+    const SPEED_Y    = 0.015;
+    const SPEED_YAW  = 1.2;
     const TILT_MAX   = 10;
     const TILT_SMOOTH= 0.12;
 
-    // 離陸・ホバリング・プロペラ設定
     let takeoff = { active: false, start: 0, dur: 1200, lift: 0.25 };
     let hover = { phase: 0, amp: 0.02, speed: 2.3 };
     const rotorConfig = { rpmIdle: 900, rpmMax: 2200, axis: new THREE.Vector3(0,1,0) };
@@ -80,9 +95,10 @@
 
     function spawnDroneAtMarkerInitial() {
       if (drone && drone.parentNode) drone.parentNode.removeChild(drone);
+
       drone = document.createElement('a-entity');
       drone.setAttribute('gltf-model', 'drone.glb');
-      drone.setAttribute('scale', '0.6 0.6 0.6'); // ← サイズUP！
+      drone.setAttribute('scale', '0.6 0.6 0.6');
 
       drone.addEventListener('model-loaded', () => {
         const root = drone.getObject3D('mesh') || drone.object3D;
@@ -90,19 +106,27 @@
       });
 
       worldRoot.appendChild(drone);
+
       const mPos = new THREE.Vector3(), mQuat = new THREE.Quaternion(), mScale = new THREE.Vector3();
       marker.object3D.matrixWorld.decompose(mPos, mQuat, mScale);
-      pos.copy(mPos);
+
+      // ★距離をさらに離す（上へ1.2m・奥へ1.2m）
+      const offsetLocal = new THREE.Vector3(0, 1.2, -1.2);
+      offsetLocal.applyQuaternion(mQuat);
+      pos.copy(mPos).add(offsetLocal);
+
       yawEuler.set(0, THREE.MathUtils.degToRad(180), 0);
       drone.object3D.position.copy(pos);
       drone.object3D.rotation.set(0, yawEuler.y, 0);
-      takeoff.active = true; takeoff.start = performance.now();
+
+      takeoff.active = true; 
+      takeoff.start = performance.now();
       currentRPM = rotorConfig.rpmIdle * 0.2;
     }
 
     marker.addEventListener('markerFound', spawnDroneAtMarkerInitial);
 
-    // ジョイスティック
+    // ジョイスティック設定
     const input = { left: {x:0,y:0}, right:{x:0,y:0} };
     const left = nipplejs.create({ zone: document.getElementById('leftStick'), mode:'static', position:{left:'75px',bottom:'75px'}, color:'white' });
     const right= nipplejs.create({ zone: document.getElementById('rightStick'), mode:'static', position:{right:'75px',bottom:'75px'}, color:'white' });
@@ -111,14 +135,12 @@
     right.on('move',(_,data)=>{ input.right.x=data.vector.x; input.right.y=data.vector.y; });
     right.on('end',()=>{ input.right.x=0; input.right.y=0; });
 
-    // フレーム更新
     function tick(){
       if(drone){
         const now=performance.now();
         let dt=0.016;
-
-        // 離陸アニメ
         let offsetY=0;
+
         if(takeoff.active){
           const t=Math.min(1,(now-takeoff.start)/takeoff.dur);
           offsetY=takeoff.lift*t;
@@ -128,13 +150,11 @@
           offsetY=Math.sin(hover.phase)*hover.amp;
         }
 
-        // 入力処理
         pos.y += input.left.y * SPEED_Y;
         yawEuler.y += THREE.MathUtils.degToRad(-input.left.x * SPEED_YAW);
         pos.x += input.right.x * SPEED_XZ;
         pos.z += -input.right.y * SPEED_XZ;
 
-        // チルト
         const targetPitch = THREE.MathUtils.degToRad( TILT_MAX * input.right.y);
         const targetRoll  = THREE.MathUtils.degToRad(-TILT_MAX * input.right.x);
         currentTilt.pitch = THREE.MathUtils.lerp(currentTilt.pitch, targetPitch, TILT_SMOOTH);
@@ -143,7 +163,6 @@
         drone.object3D.position.set(pos.x, pos.y + offsetY, pos.z);
         drone.object3D.rotation.set(currentTilt.pitch, yawEuler.y, currentTilt.roll);
 
-        // プロペラ回転
         if(rotors.length>0){
           currentRPM = rotorConfig.rpmIdle + 600 * (Math.abs(input.left.y)+Math.abs(input.right.x)+Math.abs(input.right.y));
           const dAngle=rpmToRadPerSec(currentRPM)*dt;
