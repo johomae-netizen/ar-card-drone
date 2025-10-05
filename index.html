@@ -1,149 +1,179 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>AR Drone (HIRO stable)</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AR Drone - Speed Adjusted</title>
 
-<!-- A-Frame & AR.js（安定CDN） -->
-<script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
-<script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+  <!-- A-Frame & AR.js -->
+  <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
+  <script src="https://cdn.rawgit.com/jeromeetienne/AR.js/1.7.7/aframe/build/aframe-ar.js"></script>
 
-<!-- バーチャルジョイスティック -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.9.0/nipplejs.min.js"></script>
+  <!-- Virtual Joystick -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.9.0/nipplejs.min.js"></script>
 
-<style>
-  body{margin:0;overflow:hidden;user-select:none;-webkit-user-select:none;touch-action:none;-webkit-tap-highlight-color:transparent}
-  #leftStick,#rightStick{position:fixed;bottom:20px;width:150px;height:150px;z-index:10}
-  #leftStick{left:20px} #rightStick{right:20px}
-  #hint{position:fixed;left:8px;right:8px;top:8px;z-index:9;background:rgba(0,0,0,.55);color:#fff;padding:8px 10px;border-radius:10px;font:13px/-apple-system,Segoe UI,Roboto,Helvetica,Arial}
-</style>
+  <style>
+    body { margin: 0; overflow: hidden; }
+    #leftStick, #rightStick {
+      position: fixed; bottom: 20px; width: 150px; height: 150px; z-index: 10;
+    }
+    #leftStick { left: 20px; }
+    #rightStick { right: 20px; }
+    #hint {
+      position: fixed; left: 8px; right: 8px; top: 8px; z-index: 9;
+      background: rgba(0,0,0,.55); color:#fff; padding:8px 10px; border-radius:10px;
+      font: 13px/1.4 -apple-system, "Segoe UI", Roboto, Helvetica, Arial;
+    }
+  </style>
 </head>
+
 <body>
-<div id="hint">左=上昇/回転｜右=前後左右｜HIROマーカーで起動（初回0.4秒遅延）</div>
-<div id="leftStick"></div>
-<div id="rightStick"></div>
+  <div id="hint">左＝上昇/下降+回転｜右＝前後左右移動｜前後スピード↑｜ヒロマーカーで起動🚁</div>
+  <div id="leftStick"></div>
+  <div id="rightStick"></div>
 
-<a-scene embedded arjs="trackingMethod: best; debugUIEnabled: false;">
-  <!-- ★ Hiro マーカーで確実起動 -->
-  <a-marker id="marker" preset="hiro"></a-marker>
+  <a-scene embedded arjs="trackingMethod: best; debugUIEnabled: false;">
+    <a-marker preset="hiro" id="marker"></a-marker>
+    <a-entity id="worldRoot"></a-entity>
+    <a-entity camera></a-entity>
+  </a-scene>
 
-  <!-- 機体をぶら下げるルート -->
-  <a-entity id="worldRoot"></a-entity>
-  <a-entity camera></a-entity>
-</a-scene>
+  <script>
+    const worldRoot = document.getElementById('worldRoot');
+    const marker = document.getElementById('marker');
 
-<script>
-  const worldRoot = document.getElementById('worldRoot');
-  const marker = document.getElementById('marker');
-  let drone=null, rotors=[], currentRPM=0;
+    let drone = null;
+    const pos = new THREE.Vector3(0, 0, 0);
+    const yawEuler = new THREE.Euler(0, THREE.MathUtils.degToRad(180), 0, 'XYZ');
+    let currentTilt = { pitch: 0, roll: 0 };
+    let rotors = [];
 
-  // 姿勢・移動
-  const pos = new THREE.Vector3(0,0,0);
-  const yawEuler = new THREE.Euler(0, THREE.MathUtils.degToRad(180), 0, 'XYZ');
-  let currentTilt = { pitch:0, roll:0 };
+    // === 速度調整ここ！ ===
+    const SPEED_FWD = 0.020;    // 前後（速め）
+    const SPEED_STRAFE = 0.008; // 左右
+    const SPEED_Y = 0.015;      // 上下
+    const SPEED_YAW = 1.2;      // 回転
 
-  // 操縦パラメータ（控えめで扱いやすく）
-  const SPEED_XZ=0.008, SPEED_Y=0.015, SPEED_YAW=1.2;
-  const TILT_MAX=10, TILT_SMOOTH=0.12;
+    const TILT_MAX = 10;
+    const TILT_SMOOTH = 0.12;
 
-  // 離陸・ホバリング
-  let takeoff={active:false,start:0,dur:1200,lift:0.25};
-  let hover={phase:0,amp:0.02,speed:2.3};
+    // 離陸・ホバリング
+    let takeoff = { active: false, start: 0, dur: 1200, lift: 0.25, vibAmp: 0.01 };
+    let hover = { phase: 0, amp: 0.02, speed: 2.3 };
 
-  // プロペラ回転
-  const rotorConfig={rpmIdle:900,rpmMax:2200,axis:new THREE.Vector3(0,1,0)};
-  function rpmToRadPerSec(rpm){ return rpm*Math.PI*2/60; }
-  const rotorNames=[
-    'mavic_air_dronemavic_air_drone_armsmavic_air_drone_arm_front_rgtmavic_air_drone_front_prop_rgt',
-    'mavic_air_dronemavic_air_drone_armsmavic_air_drone_arm_front_lftmavic_air_drone_front_prop_lft',
-    'mavic_air_dronemavic_air_drone_arm_rear_rgtmavic_air_drone_armsmavic_air_drone_rear_prop_rgt',
-    'mavic_air_dronemavic_air_drone_armsmavic_air_drone_arm_rear_lftmavic_air_drone_rear_prop_lft'
-  ];
-  function collectRotors(root){
-    rotors=[];
-    rotorNames.forEach(n=>{ const node=root.getObjectByName(n); if(node) rotors.push({obj:node,axis:rotorConfig.axis.clone()}); });
-  }
+    // プロペラ回転情報
+    const rotorConfig = { rpmIdle: 900, rpmMax: 2200, axis: new THREE.Vector3(0, 1, 0) };
+    let currentRPM = 0;
+    function rpmToRadPerSec(rpm){ return rpm * Math.PI * 2 / 60; }
 
-  // 生成
-  function spawnDrone(){
-    if (drone && drone.parentNode) drone.parentNode.removeChild(drone);
-    drone=document.createElement('a-entity');
-    // ★ 絶対URLで確実に
-    drone.setAttribute('gltf-model','https://johomae-netizen.github.io/ar-card-drone/drone.glb');
-    drone.setAttribute('scale','0.6 0.6 0.6');
-    drone.addEventListener('model-loaded',()=>{
-      const root=drone.getObject3D('mesh')||drone.object3D;
-      if(root) collectRotors(root);
-    });
-    worldRoot.appendChild(drone);
+    const manualRotorNames = [
+      'mavic_air_dronemavic_air_drone_armsmavic_air_drone_arm_front_rgtmavic_air_drone_front_prop_rgt',
+      'mavic_air_dronemavic_air_drone_armsmavic_air_drone_arm_front_lftmavic_air_drone_front_prop_lft',
+      'mavic_air_dronemavic_air_drone_arm_rear_rgtmavic_air_drone_armsmavic_air_drone_rear_prop_rgt',
+      'mavic_air_dronemavic_air_drone_armsmavic_air_drone_arm_rear_lftmavic_air_drone_rear_prop_lft'
+    ];
+    function collectRotors(root){
+      rotors = [];
+      manualRotorNames.forEach(name=>{
+        const node = root.getObjectByName(name);
+        if (node) rotors.push({ obj: node, axis: rotorConfig.axis.clone() });
+      });
+      rotors = rotors.filter(r => r.obj !== root);
+    }
 
-    // マーカー姿勢 → 少し上＆少し奥（見やすい）
-    const mPos=new THREE.Vector3(), mQuat=new THREE.Quaternion(), mScale=new THREE.Vector3();
-    marker.object3D.matrixWorld.decompose(mPos,mQuat,mScale);
-    const offsetLocal=new THREE.Vector3(0,0.10,-0.35); // ←見やすい初期位置
-    offsetLocal.applyQuaternion(mQuat);
-    pos.copy(mPos).add(offsetLocal);
+    // ドローン生成
+    function spawnDrone() {
+      if (drone && drone.parentNode) drone.parentNode.removeChild(drone);
+      drone = document.createElement('a-entity');
+      drone.setAttribute('gltf-model', 'drone.glb');
+      drone.setAttribute('scale', '0.35 0.35 0.35');
 
-    yawEuler.set(0, THREE.MathUtils.degToRad(180), 0);
-    currentTilt={pitch:0,roll:0};
-    drone.object3D.position.copy(pos);
-    drone.object3D.rotation.set(0,yawEuler.y,0);
+      drone.addEventListener('model-loaded', () => {
+        const root = drone.getObject3D('mesh') || drone.object3D;
+        if (root) collectRotors(root);
+      });
+      worldRoot.appendChild(drone);
 
-    takeoff.active=true; takeoff.start=performance.now();
-    currentRPM=rotorConfig.rpmIdle*0.2;
-  }
+      const mPos = new THREE.Vector3();
+      const mQuat = new THREE.Quaternion();
+      const mScale = new THREE.Vector3();
+      marker.object3D.matrixWorld.decompose(mPos, mQuat, mScale);
 
-  // 初回は0.4秒ディレイ（姿勢安定のため）
-  let lastSpawn=0;
-  marker.addEventListener('markerFound',()=>{
-    const now=performance.now(); if(now-lastSpawn<500) return; lastSpawn=now;
-    setTimeout(spawnDrone, 400);
-  });
+      // ドローン初期位置を少し奥＆少し上に
+      const offsetLocal = new THREE.Vector3(0, 0.10, -0.35);
+      offsetLocal.applyQuaternion(mQuat);
+      pos.copy(mPos).add(offsetLocal);
 
-  // ジョイスティック
-  const input={left:{x:0,y:0}, right:{x:0,y:0}};
-  const left=nipplejs.create({zone:document.getElementById('leftStick'),mode:'static',position:{left:'75px',bottom:'75px'},color:'white'});
-  const right=nipplejs.create({zone:document.getElementById('rightStick'),mode:'static',position:{right:'75px',bottom:'75px'},color:'white'});
-  left.on('move',(_,d)=>{ input.left.x=d.vector.x; input.left.y=d.vector.y; }); left.on('end',()=>{ input.left.x=0; input.left.y=0; });
-  right.on('move',(_,d)=>{ input.right.x=d.vector.x; input.right.y=d.vector.y; }); right.on('end',()=>{ input.right.x=0; input.right.y=0; });
+      yawEuler.set(0, THREE.MathUtils.degToRad(180), 0);
+      currentTilt = { pitch: 0, roll: 0 };
 
-  // ループ
-  function tick(){
+      drone.object3D.position.copy(pos);
+      drone.object3D.rotation.set(currentTilt.pitch, yawEuler.y, currentTilt.roll);
+
+      takeoff.active = true;
+      takeoff.start = performance.now();
+      currentRPM = rotorConfig.rpmIdle * 0.2;
+    }
+
+    marker.addEventListener('markerFound', () => { spawnDrone(); });
+
+    // ジョイスティック設定
+    const input = { left:{x:0,y:0,active:false}, right:{x:0,y:0,active:false} };
+    const left = nipplejs.create({ zone: document.getElementById('leftStick'), mode:'static', position:{left:'75px',bottom:'75px'}, color:'white' });
+    left.on('move',(_,d)=>{input.left.active=true;input.left.x=d.vector.x;input.left.y=d.vector.y;});
+    left.on('end',()=>{input.left.active=false;input.left.x=0;input.left.y=0;});
+
+    const right = nipplejs.create({ zone: document.getElementById('rightStick'), mode:'static', position:{right:'75px',bottom:'75px'}, color:'white' });
+    right.on('move',(_,d)=>{input.right.active=true;input.right.x=d.vector.x;input.right.y=d.vector.y;});
+    right.on('end',()=>{input.right.active=false;input.right.x=0;input.right.y=0;});
+
+    // メインループ
+    function tick() {
+      const now = performance.now();
+      requestAnimationFrame(tick);
+      if (!drone) return;
+
+      let takeoffOffset = 0;
+      let takeoffGain = 1;
+
+      if (takeoff.active) {
+        const t = Math.min(1, (now - takeoff.start) / takeoff.dur);
+        const e = 1 - Math.pow(1 - t, 3);
+        takeoffOffset = e * takeoff.lift + Math.sin(now * 0.06) * 0.01 * (1 - e);
+        takeoffGain = e;
+        if (t >= 1) takeoff.active = false;
+        const target = rotorConfig.rpmIdle;
+        currentRPM += (target - currentRPM) * 0.06;
+      } else {
+        hover.phase += hover.speed * 0.016;
+        takeoffOffset = Math.sin(hover.phase) * hover.amp;
+        const thrust = Math.max(0, input.left.y) + Math.abs(input.right.y) + Math.abs(input.right.x);
+        const target = rotorConfig.rpmIdle + (rotorConfig.rpmMax - rotorConfig.rpmIdle) * Math.min(1, thrust * 0.6);
+        currentRPM += (target - currentRPM) * 0.08;
+      }
+
+      // 移動適用
+      pos.y += input.left.y * SPEED_Y;
+      yawEuler.y += THREE.MathUtils.degToRad(-input.left.x * SPEED_YAW);
+      pos.z += -input.right.y * SPEED_FWD;      // 前後は速く
+      pos.x +=  input.right.x * SPEED_STRAFE;   // 左右は控えめ
+
+      // チルト
+      const targetPitch = THREE.MathUtils.degToRad(TILT_MAX * input.right.y);
+      const targetRoll = THREE.MathUtils.degToRad(-TILT_MAX * input.right.x);
+      currentTilt.pitch = THREE.MathUtils.lerp(currentTilt.pitch, targetPitch, TILT_SMOOTH);
+      currentTilt.roll = THREE.MathUtils.lerp(currentTilt.roll, targetRoll, TILT_SMOOTH);
+
+      drone.object3D.position.set(pos.x, pos.y + takeoffOffset, pos.z);
+      drone.object3D.rotation.set(currentTilt.pitch, yawEuler.y, currentTilt.roll);
+
+      // プロペラ回転
+      if (rotors.length > 0 && currentRPM > 1) {
+        const dAngle = rpmToRadPerSec(currentRPM) * 0.016;
+        for (const r of rotors) r.obj.rotateOnAxis(r.axis, dAngle);
+      }
+    }
     requestAnimationFrame(tick);
-    if(!drone) return;
-    const now=performance.now(); let dt=0.016, offsetY=0;
-
-    if(takeoff.active){
-      const t=Math.min(1,(now-takeoff.start)/takeoff.dur);
-      const e=1-Math.pow(1-t,3); offsetY=e*takeoff.lift; if(t>=1) takeoff.active=false;
-      currentRPM += (rotorConfig.rpmIdle - currentRPM)*0.06;
-    } else {
-      hover.phase+=hover.speed*dt; offsetY=Math.sin(hover.phase)*hover.amp;
-      const thrust=Math.max(0,input.left.y)+Math.abs(input.right.y)+Math.abs(input.right.x);
-      const target=rotorConfig.rpmIdle+(rotorConfig.rpmMax-rotorConfig.rpmIdle)*Math.min(1,thrust*0.6);
-      currentRPM += (target - currentRPM)*0.08;
-    }
-
-    pos.y += input.left.y*SPEED_Y;
-    yawEuler.y += THREE.MathUtils.degToRad(-input.left.x*SPEED_YAW);
-    pos.x += input.right.x*SPEED_XZ;
-    pos.z += -input.right.y*SPEED_XZ;
-
-    const tPitch=THREE.MathUtils.degToRad(TILT_MAX*input.right.y);
-    const tRoll =THREE.MathUtils.degToRad(-TILT_MAX*input.right.x);
-    currentTilt.pitch=THREE.MathUtils.lerp(currentTilt.pitch,tPitch,TILT_SMOOTH);
-    currentTilt.roll =THREE.MathUtils.lerp(currentTilt.roll, tRoll,TILT_SMOOTH);
-
-    drone.object3D.position.set(pos.x, pos.y+offsetY, pos.z);
-    drone.object3D.rotation.set(currentTilt.pitch, yawEuler.y, currentTilt.roll);
-
-    if(rotors.length>0 && currentRPM>1){
-      const dAngle=rpmToRadPerSec(currentRPM)*dt;
-      for(const r of rotors) r.obj.rotateOnAxis(r.axis, dAngle);
-    }
-  }
-  requestAnimationFrame(tick);
-</script>
+  </script>
 </body>
 </html>
