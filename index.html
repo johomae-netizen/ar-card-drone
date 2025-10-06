@@ -3,15 +3,13 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>AR Drone Business Card</title>
+  <title>AR Drone - Ring Challenge</title>
 
-  <!-- ライブラリ読み込み -->
   <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
   <script src="https://cdn.rawgit.com/jeromeetienne/AR.js/1.7.7/aframe/build/aframe-ar.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.9.0/nipplejs.min.js"></script>
 
   <style>
-    /* ========== 基本スタイル ========== */
     body { 
       margin: 0; 
       overflow: hidden; 
@@ -22,7 +20,6 @@
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
 
-    /* ========== ジョイスティックエリア ========== */
     #leftStick, #rightStick {
       position: fixed; 
       bottom: 20px; 
@@ -35,7 +32,6 @@
     #leftStick { left: 20px; }
     #rightStick { right: 20px; }
     
-    /* ========== 操作ガイド ========== */
     #hint {
       position: fixed; 
       left: 8px; 
@@ -53,7 +49,6 @@
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     }
     
-    /* ========== カメラ許可案内 ========== */
     #camera-hint {
       position: fixed; 
       top: 50%; 
@@ -72,7 +67,6 @@
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
     }
     
-    /* ========== アプリ内ブラウザ警告 ========== */
     #browser-warning {
       position: fixed;
       top: 50%;
@@ -102,22 +96,136 @@
       font-weight: 600;
       cursor: pointer;
     }
+
+    /* ========== ゲームUI ========== */
+    #game-ui {
+      position: fixed;
+      top: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 8;
+      text-align: center;
+      pointer-events: none;
+    }
+
+    #score-display {
+      background: rgba(0, 0, 0, 0.8);
+      color: #FFD700;
+      padding: 12px 24px;
+      border-radius: 16px;
+      font-size: 32px;
+      font-weight: bold;
+      margin-bottom: 8px;
+      text-shadow: 0 2px 8px rgba(255, 215, 0, 0.5);
+    }
+
+    #timer-display {
+      background: rgba(0, 0, 0, 0.7);
+      color: #fff;
+      padding: 8px 20px;
+      border-radius: 12px;
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    #rings-left {
+      background: rgba(0, 120, 255, 0.8);
+      color: #fff;
+      padding: 8px 20px;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    #combo-display {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 48px;
+      font-weight: bold;
+      color: #FFD700;
+      text-shadow: 0 0 20px rgba(255, 215, 0, 0.8);
+      opacity: 0;
+      z-index: 999;
+      pointer-events: none;
+      transition: opacity 0.3s;
+    }
+
+    #complete-message {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0, 200, 0, 0.95);
+      color: #fff;
+      padding: 30px 40px;
+      border-radius: 20px;
+      font-size: 36px;
+      font-weight: bold;
+      text-align: center;
+      z-index: 1000;
+      display: none;
+      box-shadow: 0 8px 32px rgba(0, 200, 0, 0.5);
+    }
+
+    #game-controls {
+      position: fixed;
+      bottom: 200px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 8;
+      display: flex;
+      gap: 12px;
+    }
+
+    .game-btn {
+      background: rgba(0, 120, 255, 0.9);
+      color: #fff;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0, 120, 255, 0.3);
+      transition: all 0.3s;
+    }
+
+    .game-btn:active {
+      transform: scale(0.95);
+      box-shadow: 0 2px 8px rgba(0, 120, 255, 0.5);
+    }
+
+    .game-btn.reset {
+      background: rgba(255, 59, 48, 0.9);
+      box-shadow: 0 4px 12px rgba(255, 59, 48, 0.3);
+    }
+
+    .game-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
     
-    /* ========== アニメーション ========== */
     @keyframes fadeOut {
       0% { opacity: 1; }
       75% { opacity: 1; }
       100% { opacity: 0; pointer-events: none; }
     }
+
+    @keyframes pulse {
+      0%, 100% { transform: translate(-50%, -50%) scale(1); }
+      50% { transform: translate(-50%, -50%) scale(1.1); }
+    }
   </style>
 </head>
 
 <body>
-  <!-- UI要素 -->
   <div id="hint">
     左スティック＝上昇/下降 + 回転<br>
     右スティック＝前後左右移動<br>
-    📍 マーカーを写すと中央にドローン出現🚁
+    🎯 リングをくぐってスコアを稼ごう！
   </div>
 
   <div id="camera-hint">
@@ -133,11 +241,28 @@
     <button onclick="this.parentElement.style.display='none'">閉じる</button>
   </div>
 
-  <!-- ジョイスティックエリア -->
+  <!-- ゲームUI -->
+  <div id="game-ui">
+    <div id="score-display">0</div>
+    <div id="timer-display">60.0s</div>
+    <div id="rings-left">残り: 8個</div>
+  </div>
+
+  <div id="combo-display"></div>
+
+  <div id="complete-message">
+    🎉 COMPLETE! 🎉<br>
+    <span style="font-size: 24px;" id="final-time"></span>
+  </div>
+
+  <div id="game-controls">
+    <button class="game-btn" id="start-btn">ゲーム開始</button>
+    <button class="game-btn reset" id="reset-btn">リセット</button>
+  </div>
+
   <div id="leftStick"></div>
   <div id="rightStick"></div>
 
-  <!-- AR.js シーン -->
   <a-scene embedded arjs="trackingMethod: best; debugUIEnabled: false;">
     <a-marker preset="hiro" id="marker"></a-marker>
     <a-entity id="worldRoot"></a-entity>
@@ -145,10 +270,6 @@
   </a-scene>
 
   <script>
-    // ========================================
-    // AR Drone Business Card - メインスクリプト
-    // ========================================
-
     // ========== グローバル変数 ==========
     const marker = document.getElementById('marker');
     const worldRoot = document.getElementById('worldRoot');
@@ -156,41 +277,47 @@
     
     let drone = null;
     let rotors = [];
+    let rings = [];
     
     const pos = new THREE.Vector3(0, 0, 0);
     const yawEuler = new THREE.Euler(0, THREE.MathUtils.degToRad(180), 0, 'XYZ');
     let currentTilt = { pitch: 0, roll: 0 };
     
+    // ========== ゲーム状態 ==========
+    const gameState = {
+      active: false,
+      score: 0,
+      startTime: 0,
+      elapsedTime: 0,
+      ringsCleared: 0,
+      totalRings: 8,
+      bestTime: localStorage.getItem('bestTime') || null,
+      combo: 0,
+      lastClearTime: 0
+    };
+    
     // ========== 設定値 ==========
     const CONFIG = {
-      // 移動速度
       speedForward: 0.02,
       speedStrafe: 0.008,
       speedVertical: 0.015,
       speedYaw: 1.2,
-      
-      // チルト（傾き）
       tiltMax: 10,
       tiltSmooth: 0.12,
-      
-      // プロペラ回転（RPM制御）
-      rpmIdle: 900,        // アイドル状態
-      rpmHover: 1500,      // ホバリング
-      rpmMax: 2200,        // 最大出力
-      rpmAccel: 0.08,      // 加速度
-      
-      // 離陸アニメーション
+      rpmIdle: 900,
+      rpmHover: 1500,
+      rpmMax: 2200,
+      rpmAccel: 0.08,
       takeoffDuration: 1500,
       takeoffHeight: 0.25,
-      
-      // 境界制限
       boundaryX: 1.5,
       boundaryY: { min: -0.3, max: 1.2 },
       boundaryZ: 1.5,
-      
-      // スポーン位置
       spawnDistance: 0.6,
-      spawnLift: 0.08
+      spawnLift: 0.08,
+      ringRadius: 0.15,
+      ringCheckDistance: 0.2,
+      comboTimeWindow: 3000
     };
     
     const rotorConfig = {
@@ -198,12 +325,8 @@
     };
     
     let currentRPM = 0;
-    const takeoffAnim = { 
-      active: false, 
-      start: 0 
-    };
+    const takeoffAnim = { active: false, start: 0 };
     
-    // ========== プロペラノード名リスト ==========
     const rotorNames = [
       'mavic_air_dronemavic_air_drone_armsmavic_air_drone_arm_front_rgtmavic_air_drone_front_prop_rgt',
       'mavic_air_dronemavic_air_drone_armsmavic_air_drone_arm_front_lftmavic_air_drone_front_prop_lft',
@@ -211,7 +334,6 @@
       'mavic_air_dronemavic_air_drone_armsmavic_air_drone_arm_rear_lftmavic_air_drone_rear_prop_lft'
     ];
     
-    // ========== ユーティリティ関数 ==========
     function rpmToRadPerSec(rpm) {
       return rpm * Math.PI * 2 / 60;
     }
@@ -221,18 +343,67 @@
       rotorNames.forEach(name => {
         const node = root.getObjectByName(name);
         if (node) {
-          rotors.push({
-            obj: node,
-            axis: rotorConfig.axis.clone()
-          });
+          rotors.push({ obj: node, axis: rotorConfig.axis.clone() });
         }
       });
       console.log(`✅ プロペラ検出: ${rotors.length}個`);
     }
     
+    // ========== リング生成 ==========
+    function createRing(position, isBonus = false) {
+      const ring = document.createElement('a-torus');
+      ring.setAttribute('radius', CONFIG.ringRadius);
+      ring.setAttribute('radius-tubular', '0.02');
+      ring.setAttribute('color', isBonus ? '#FFD700' : '#00BFFF');
+      ring.setAttribute('metalness', '0.8');
+      ring.setAttribute('roughness', '0.2');
+      ring.setAttribute('position', `${position.x} ${position.y} ${position.z}`);
+      ring.setAttribute('animation', 'property: rotation; to: 0 360 0; loop: true; dur: 3000; easing: linear');
+      
+      worldRoot.appendChild(ring);
+      
+      return {
+        element: ring,
+        position: position.clone(),
+        cleared: false,
+        isBonus: isBonus
+      };
+    }
+    
+    function spawnRings() {
+      clearRings();
+      rings = [];
+      
+      const positions = [
+        new THREE.Vector3(0.3, 0.3, 0.4),
+        new THREE.Vector3(-0.4, 0.5, 0.3),
+        new THREE.Vector3(0.2, 0.2, 0.6),
+        new THREE.Vector3(-0.3, 0.4, 0.5),
+        new THREE.Vector3(0.5, 0.6, 0.4),
+        new THREE.Vector3(-0.5, 0.3, 0.6),
+        new THREE.Vector3(0.4, 0.7, 0.5),
+        new THREE.Vector3(-0.2, 0.5, 0.7)
+      ];
+      
+      positions.forEach((pos, i) => {
+        const isBonus = i === 4;
+        rings.push(createRing(pos, isBonus));
+      });
+      
+      console.log('🎯 リング生成完了:', rings.length);
+    }
+    
+    function clearRings() {
+      rings.forEach(ring => {
+        if (ring.element && ring.element.parentNode) {
+          worldRoot.removeChild(ring.element);
+        }
+      });
+      rings = [];
+    }
+    
     // ========== ドローン生成 ==========
     function spawnDrone() {
-      // 既存のドローンがあれば削除して新しく生成
       if (drone && drone.parentNode) {
         worldRoot.removeChild(drone);
         console.log('🔄 既存ドローンを削除して再生成');
@@ -248,7 +419,6 @@
         if (root) collectRotors(root);
       });
       
-      // カメラ位置から前方にスポーン
       const camObj = camEl.object3D;
       const camPos = new THREE.Vector3();
       const forward = new THREE.Vector3();
@@ -259,7 +429,6 @@
         .add(forward.multiplyScalar(CONFIG.spawnDistance))
         .add(new THREE.Vector3(0, CONFIG.spawnLift, 0));
       
-      // カメラの向きに合わせる
       const camQuat = camObj.getWorldQuaternion(new THREE.Quaternion());
       const camEuler = new THREE.Euler().setFromQuaternion(camQuat, 'YXZ');
       yawEuler.set(0, camEuler.y + Math.PI, 0);
@@ -268,27 +437,141 @@
       drone.object3D.position.copy(pos);
       drone.object3D.rotation.set(currentTilt.pitch, yawEuler.y, currentTilt.roll);
       
-      // 離陸アニメーション開始
       takeoffAnim.active = true;
       takeoffAnim.start = performance.now();
       currentRPM = CONFIG.rpmIdle * 0.2;
       
-      console.log('🚁 ドローン生成完了（マーカー再検出で画面中央に再配置）');
+      console.log('🚁 ドローン生成完了');
     }
     
-    // ========== マーカーイベント ==========
     marker.addEventListener('markerFound', () => {
       console.log('📍 マーカー検出');
       spawnDrone();
     });
     
-    // ========== ジョイスティック設定 ==========
-    const input = {
-      left: { x: 0, y: 0 },
-      right: { x: 0, y: 0 }
-    };
+    // ========== ゲーム制御 ==========
+    function startGame() {
+      if (!drone) {
+        alert('マーカーを写してドローンを出現させてください');
+        return;
+      }
+      
+      gameState.active = true;
+      gameState.score = 0;
+      gameState.startTime = performance.now();
+      gameState.ringsCleared = 0;
+      gameState.combo = 0;
+      
+      spawnRings();
+      updateUI();
+      
+      document.getElementById('start-btn').disabled = true;
+      console.log('🎮 ゲーム開始！');
+    }
     
-    // タッチイベントの伝播を防止
+    function resetGame() {
+      gameState.active = false;
+      gameState.score = 0;
+      gameState.elapsedTime = 0;
+      gameState.ringsCleared = 0;
+      gameState.combo = 0;
+      
+      clearRings();
+      updateUI();
+      
+      document.getElementById('start-btn').disabled = false;
+      document.getElementById('complete-message').style.display = 'none';
+      console.log('🔄 ゲームリセット');
+    }
+    
+    function completeGame() {
+      gameState.active = false;
+      const finalTime = gameState.elapsedTime;
+      
+      if (!gameState.bestTime || finalTime < gameState.bestTime) {
+        gameState.bestTime = finalTime;
+        localStorage.setItem('bestTime', finalTime);
+      }
+      
+      document.getElementById('final-time').textContent = 
+        `タイム: ${finalTime.toFixed(2)}秒\nベスト: ${gameState.bestTime.toFixed(2)}秒`;
+      document.getElementById('complete-message').style.display = 'block';
+      document.getElementById('start-btn').disabled = false;
+      
+      console.log('🎉 ゲームクリア！');
+    }
+    
+    function updateUI() {
+      document.getElementById('score-display').textContent = gameState.score;
+      document.getElementById('timer-display').textContent = 
+        gameState.active ? `${gameState.elapsedTime.toFixed(1)}s` : '60.0s';
+      document.getElementById('rings-left').textContent = 
+        `残り: ${gameState.totalRings - gameState.ringsCleared}個`;
+    }
+    
+    function showCombo(points) {
+      const comboEl = document.getElementById('combo-display');
+      comboEl.textContent = `+${points}`;
+      comboEl.style.opacity = '1';
+      
+      setTimeout(() => {
+        comboEl.style.opacity = '0';
+      }, 800);
+    }
+    
+    function checkRingCollision() {
+      if (!drone || !gameState.active) return;
+      
+      const dronePos = drone.object3D.position;
+      const now = performance.now();
+      
+      rings.forEach(ring => {
+        if (ring.cleared) return;
+        
+        const distance = dronePos.distanceTo(ring.position);
+        
+        if (distance < CONFIG.ringCheckDistance) {
+          ring.cleared = true;
+          ring.element.setAttribute('animation', 'property: scale; to: 0 0 0; dur: 300; easing: easeInQuad');
+          
+          setTimeout(() => {
+            if (ring.element.parentNode) {
+              worldRoot.removeChild(ring.element);
+            }
+          }, 300);
+          
+          const points = ring.isBonus ? 300 : 100;
+          
+          if (now - gameState.lastClearTime < CONFIG.comboTimeWindow) {
+            gameState.combo++;
+          } else {
+            gameState.combo = 1;
+          }
+          
+          const totalPoints = points * gameState.combo;
+          gameState.score += totalPoints;
+          gameState.ringsCleared++;
+          gameState.lastClearTime = now;
+          
+          showCombo(totalPoints);
+          updateUI();
+          
+          console.log(`🎯 リングクリア！ +${totalPoints} (コンボ: x${gameState.combo})`);
+          
+          if (gameState.ringsCleared >= gameState.totalRings) {
+            completeGame();
+          }
+        }
+      });
+    }
+    
+    // ========== ボタンイベント ==========
+    document.getElementById('start-btn').addEventListener('click', startGame);
+    document.getElementById('reset-btn').addEventListener('click', resetGame);
+    
+    // ========== ジョイスティック ==========
+    const input = { left: { x: 0, y: 0 }, right: { x: 0, y: 0 } };
+    
     const stopTouch = (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -298,7 +581,6 @@
     document.addEventListener('touchstart', stopTouch, { passive: false });
     document.addEventListener('touchmove', stopTouch, { passive: false });
     
-    // 左スティック（上昇/下降 + 旋回）
     const left = nipplejs.create({
       zone: document.getElementById('leftStick'),
       mode: 'static',
@@ -316,7 +598,6 @@
       input.left.y = 0;
     });
     
-    // 右スティック（前後左右移動）
     const right = nipplejs.create({
       zone: document.getElementById('rightStick'),
       mode: 'static',
@@ -340,7 +621,6 @@
       
       if (!drone) return;
       
-      // 離陸アニメーション処理
       let takeoffOffset = 0;
       if (takeoffAnim.active) {
         const elapsed = performance.now() - takeoffAnim.start;
@@ -353,7 +633,6 @@
         
         currentRPM += (CONFIG.rpmIdle - currentRPM) * 0.05;
       } else {
-        // 操作に応じたRPM制御
         const inputMagnitude = Math.sqrt(
           input.left.y ** 2 + 
           input.right.x ** 2 + 
@@ -367,11 +646,9 @@
         currentRPM += (targetRPM - currentRPM) * CONFIG.rpmAccel;
       }
       
-      // 位置更新
       pos.y += input.left.y * CONFIG.speedVertical;
       yawEuler.y += THREE.MathUtils.degToRad(-input.left.x * CONFIG.speedYaw);
       
-      // ヨー角に基づいた前後左右移動
       const yawCos = Math.cos(yawEuler.y);
       const yawSin = Math.sin(yawEuler.y);
       
@@ -381,28 +658,30 @@
       pos.x += fwd * yawSin + strafe * yawCos;
       pos.z += fwd * yawCos - strafe * yawSin;
       
-      // 境界制限
       pos.x = THREE.MathUtils.clamp(pos.x, -CONFIG.boundaryX, CONFIG.boundaryX);
       pos.y = THREE.MathUtils.clamp(pos.y, CONFIG.boundaryY.min, CONFIG.boundaryY.max);
       pos.z = THREE.MathUtils.clamp(pos.z, -CONFIG.boundaryZ, CONFIG.boundaryZ);
       
-      // チルト更新
       const targetPitch = THREE.MathUtils.degToRad(CONFIG.tiltMax * input.right.y);
       const targetRoll = THREE.MathUtils.degToRad(-CONFIG.tiltMax * input.right.x);
       
       currentTilt.pitch = THREE.MathUtils.lerp(currentTilt.pitch, targetPitch, CONFIG.tiltSmooth);
       currentTilt.roll = THREE.MathUtils.lerp(currentTilt.roll, targetRoll, CONFIG.tiltSmooth);
       
-      // ドローン位置・姿勢更新
       drone.object3D.position.set(pos.x, pos.y + takeoffOffset, pos.z);
       drone.object3D.rotation.set(currentTilt.pitch, yawEuler.y, currentTilt.roll);
       
-      // プロペラ回転
       if (rotors.length > 0) {
         const dAngle = rpmToRadPerSec(currentRPM) * 0.016;
         for (const rotor of rotors) {
           rotor.obj.rotateOnAxis(rotor.axis, dAngle);
         }
+      }
+      
+      if (gameState.active) {
+        gameState.elapsedTime = (performance.now() - gameState.startTime) / 1000;
+        updateUI();
+        checkRingCollision();
       }
     }
     
@@ -429,14 +708,7 @@
       detectInAppBrowser();
     });
     
-    // ========== 起動ログ ==========
-    console.log('🚁 AR Drone Business Card システム起動');
-    console.log('📋 実装機能:');
-    console.log('  ✅ マーカー再検出時は画面中央に再配置');
-    console.log('  ✅ マーカーを外しても飛行継続');
-    console.log('  ✅ 操作に応じたRPM制御（アイドル→ホバー→最大）');
-    console.log('  ✅ 境界制限（X:±1.5m, Y:-0.3〜1.2m, Z:±1.5m）');
-    console.log('  ✅ アプリ内ブラウザ検出（LINE/Instagram/Facebook/Twitter/WeChat）');
+    console.log('🚁 AR Drone Ring Challenge 起動完了！');
   </script>
 </body>
 </html>
