@@ -62,9 +62,10 @@
       line-height: 1.7;
       text-align: center; 
       z-index: 9999;
-      animation: fadeOut 12s ease-in-out forwards;
+      animation: fadeOut 8s ease-in-out forwards;
       max-width: 90%;
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+      pointer-events: none;
     }
     
     #browser-warning {
@@ -210,7 +211,7 @@
     
     @keyframes fadeOut {
       0% { opacity: 1; }
-      75% { opacity: 1; }
+      60% { opacity: 1; }
       100% { opacity: 0; pointer-events: none; }
     }
 
@@ -229,9 +230,10 @@
   </div>
 
   <div id="camera-hint">
-    📸 <b>カメラを許可してください</b><br><br>
-    "This site wants to access your camera" と表示されたら<br>
-    <b style="color:#4A90E2;">青いボタン または「Allow（許可）」</b>を選択
+    📸 <b>カメラ許可が必要です</b><br><br>
+    ブラウザに表示される<br>
+    <b style="color:#4A90E2;">「許可」または「Allow」</b>を選択してください<br><br>
+    <span style="font-size:12px; opacity:0.8;">※このメッセージは自動で消えます</span>
   </div>
   
   <div id="browser-warning">
@@ -244,8 +246,8 @@
   <!-- ゲームUI -->
   <div id="game-ui">
     <div id="score-display">0</div>
-    <div id="timer-display">60.0s</div>
-    <div id="rings-left">残り: 8個</div>
+    <div id="timer-display">30.0s</div>
+    <div id="rings-left">残り: 6個</div>
   </div>
 
   <div id="combo-display"></div>
@@ -270,6 +272,12 @@
   </a-scene>
 
   <script>
+    // A-Frameの読み込み完了を待つ
+    document.addEventListener('DOMContentLoaded', function() {
+      initAR();
+    });
+    
+    function initAR() {
     // ========== グローバル変数 ==========
     const marker = document.getElementById('marker');
     const worldRoot = document.getElementById('worldRoot');
@@ -290,18 +298,20 @@
       startTime: 0,
       elapsedTime: 0,
       ringsCleared: 0,
-      totalRings: 8,
+      totalRings: 6,             // 8 → 6個に削減
       bestTime: localStorage.getItem('bestTime') || null,
       combo: 0,
-      lastClearTime: 0
+      lastClearTime: 0,
+      timeLimit: 30,             // 30秒制限
+      gameOver: false
     };
     
     // ========== 設定値 ==========
     const CONFIG = {
-      speedForward: 0.02,
-      speedStrafe: 0.008,
-      speedVertical: 0.015,
-      speedYaw: 1.2,
+      speedForward: 0.025,      // 0.02 → 0.025（1.25倍速）
+      speedStrafe: 0.01,         // 0.008 → 0.01（1.25倍速）
+      speedVertical: 0.018,      // 0.015 → 0.018（1.2倍速）
+      speedYaw: 1.5,             // 1.2 → 1.5（回転速度UP）
       tiltMax: 10,
       tiltSmooth: 0.12,
       rpmIdle: 900,
@@ -310,14 +320,15 @@
       rpmAccel: 0.08,
       takeoffDuration: 1500,
       takeoffHeight: 0.25,
-      boundaryX: 1.5,
-      boundaryY: { min: -0.3, max: 1.2 },
-      boundaryZ: 1.5,
+      boundaryX: 1.8,            // 1.5 → 1.8（範囲拡大）
+      boundaryY: { min: -0.3, max: 1.4 },  // 1.2 → 1.4（高さ拡大）
+      boundaryZ: 1.8,            // 1.5 → 1.8（奥行き拡大）
       spawnDistance: 0.6,
       spawnLift: 0.08,
-      ringRadius: 0.15,
-      ringCheckDistance: 0.2,
-      comboTimeWindow: 3000
+      ringRadius: 0.18,          // 0.15 → 0.18（少し大きく）
+      ringCheckDistance: 0.22,   // 0.2 → 0.22（判定も広く）
+      comboTimeWindow: 3000,
+      timeLimit: 30              // 制限時間30秒
     };
     
     const rotorConfig = {
@@ -374,9 +385,9 @@
       clearRings();
       rings = [];
       
-      // ランダム位置生成
+      // ランダム位置生成（30秒用に調整）
       const positions = [];
-      const minDistance = 0.3; // リング同士の最小距離
+      const minDistance = 0.35; // 0.3 → 0.35（少し離す）
       
       for (let i = 0; i < gameState.totalRings; i++) {
         let validPosition = false;
@@ -386,9 +397,9 @@
         // 他のリングと被らない位置を探す（最大50回試行）
         while (!validPosition && attempts < 50) {
           newPos = new THREE.Vector3(
-            (Math.random() - 0.5) * 2.4,  // X: -1.2 ~ 1.2
-            Math.random() * 0.8 + 0.2,     // Y: 0.2 ~ 1.0
-            Math.random() * 0.6 + 0.3      // Z: 0.3 ~ 0.9
+            (Math.random() - 0.5) * 3.0,  // 2.4 → 3.0（範囲拡大）
+            Math.random() * 1.0 + 0.25,   // 0.2~1.0 → 0.25~1.25
+            Math.random() * 0.8 + 0.3     // 0.3~0.9 → 0.3~1.1
           );
           
           // 既存のリングとの距離をチェック
@@ -407,13 +418,13 @@
         }
       }
       
-      // リングを生成（5個目をボーナスに）
+      // リングを生成（3個目をボーナスに）
       positions.forEach((pos, i) => {
-        const isBonus = i === 4;
+        const isBonus = i === 2; // 4 → 2（6個中3個目）
         rings.push(createRing(pos, isBonus));
       });
       
-      console.log('🎯 リング生成完了（ランダム配置）:', rings.length);
+      console.log('🎯 リング生成完了（30秒モード）:', rings.length);
     }
     
     function clearRings() {
@@ -484,12 +495,13 @@
       gameState.startTime = performance.now();
       gameState.ringsCleared = 0;
       gameState.combo = 0;
+      gameState.gameOver = false;
       
       spawnRings();
       updateUI();
       
       document.getElementById('start-btn').disabled = true;
-      console.log('🎮 ゲーム開始！');
+      console.log('🎮 ゲーム開始！（30秒チャレンジ）');
     }
     
     function resetGame() {
@@ -498,6 +510,7 @@
       gameState.elapsedTime = 0;
       gameState.ringsCleared = 0;
       gameState.combo = 0;
+      gameState.gameOver = false;
       
       clearRings();
       updateUI();
@@ -505,6 +518,19 @@
       document.getElementById('start-btn').disabled = false;
       document.getElementById('complete-message').style.display = 'none';
       console.log('🔄 ゲームリセット');
+    }
+    
+    function gameOverTime() {
+      gameState.active = false;
+      gameState.gameOver = true;
+      
+      document.getElementById('final-time').textContent = 
+        `⏱️ タイムアップ！\nスコア: ${gameState.score}点\nクリア: ${gameState.ringsCleared}/${gameState.totalRings}個`;
+      document.getElementById('complete-message').style.display = 'block';
+      document.getElementById('complete-message').style.background = 'rgba(255, 100, 0, 0.95)';
+      document.getElementById('start-btn').disabled = false;
+      
+      console.log('⏱️ タイムアップ！');
     }
     
     function completeGame() {
@@ -517,8 +543,9 @@
       }
       
       document.getElementById('final-time').textContent = 
-        `タイム: ${finalTime.toFixed(2)}秒\nベスト: ${gameState.bestTime.toFixed(2)}秒`;
+        `タイム: ${finalTime.toFixed(2)}秒\nベスト: ${gameState.bestTime.toFixed(2)}秒\nスコア: ${gameState.score}点`;
       document.getElementById('complete-message').style.display = 'block';
+      document.getElementById('complete-message').style.background = 'rgba(0, 200, 0, 0.95)';
       document.getElementById('start-btn').disabled = false;
       
       console.log('🎉 ゲームクリア！');
@@ -526,8 +553,13 @@
     
     function updateUI() {
       document.getElementById('score-display').textContent = gameState.score;
-      document.getElementById('timer-display').textContent = 
-        gameState.active ? `${gameState.elapsedTime.toFixed(1)}s` : '60.0s';
+      
+      const remainingTime = Math.max(0, gameState.timeLimit - gameState.elapsedTime);
+      const timeColor = remainingTime < 10 ? '#FF3B30' : '#fff';
+      const timerEl = document.getElementById('timer-display');
+      timerEl.textContent = gameState.active ? `${remainingTime.toFixed(1)}s` : '30.0s';
+      timerEl.style.color = timeColor;
+      
       document.getElementById('rings-left').textContent = 
         `残り: ${gameState.totalRings - gameState.ringsCleared}個`;
     }
@@ -703,6 +735,12 @@
       
       if (gameState.active) {
         gameState.elapsedTime = (performance.now() - gameState.startTime) / 1000;
+        
+        // タイムアップチェック
+        if (gameState.elapsedTime >= gameState.timeLimit && !gameState.gameOver) {
+          gameOverTime();
+        }
+        
         updateUI();
         checkRingCollision();
       }
@@ -732,6 +770,7 @@
     });
     
     console.log('🚁 AR Drone Ring Challenge 起動完了！');
+    } // initAR()の終了
   </script>
 </body>
 </html>
